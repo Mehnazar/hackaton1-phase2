@@ -1,0 +1,35 @@
+# FastAPI and ASGI server
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+
+# OpenAI and AI SDKs
+openai==1.10.0
+langchain==0.1.4
+langchain-openai==0.0.2
+
+# Vector Database
+qdrant-client>=1.7.1
+
+# Database (Neon Postgres) - For auth and user management
+asyncpg>=0.31.0
+bcrypt==4.1.2
+
+# Environment and Configuration
+python-dotenv==1.0.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+email-validator>=2.0.0
+
+# HTTP Client
+httpx==0.26.0
+
+# Testing
+pytest==7.4.4
+pytest-asyncio==0.23.3
+pytest-cov==4.1.0
+
+# Development Tools
+black==24.1.1
+flake8==7.0.0
+mypy==1.8.0

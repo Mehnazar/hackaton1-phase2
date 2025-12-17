@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(test:*)",
+      "Bash(pip install:*)",
+      "Bash(npm --version:*)",
+      "Bash(npm install)",
+      "Bash(npm run dev:*)",
+      "Bash(python -c:*)",
+      "Bash(curl:*)"
+    ]
+  }
+}

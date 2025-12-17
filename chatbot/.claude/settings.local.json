@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pip install:*)",
+      "Bash(python -m uvicorn:*)",
+      "Bash(curl:*)",
+      "Bash(npm install)",
+      "Bash(npm run dev:*)",
+      "Bash(python -m json.tool:*)",
+      "Bash(python:*)",
+      "Bash(test:*)",
+      "Bash(uvicorn:*)"
+    ]
+  }
+}

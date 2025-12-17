@@ -1,0 +1,157 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Qdrant Collection Schema for RAG Chatbot",
+  "description": "Schema for the 'book-chunks' collection in Qdrant Cloud",
+  "type": "object",
+  "properties": {
+    "collection_name": {
+      "type": "string",
+      "const": "book-chunks",
+      "description": "Name of the Qdrant collection"
+    },
+    "vector_config": {
+      "type": "object",
+      "description": "Vector configuration for embeddings",
+      "properties": {
+        "size": {
+          "type": "integer",
+          "const": 1536,
+          "description": "Dimension of OpenAI text-embedding-3-small embeddings"
+        },
+        "distance": {
+          "type": "string",
+          "enum": ["Cosine", "Euclid", "Dot"],
+          "const": "Cosine",
+          "description": "Distance metric for similarity search (Cosine recommended for normalized embeddings)"
+        }
+      },
+      "required": ["size", "distance"]
+    },
+    "hnsw_config": {
+      "type": "object",
+      "description": "HNSW index configuration for fast approximate search",
+      "properties": {
+        "m": {
+          "type": "integer",
+          "const": 16,
+          "description": "Number of edges per node (balance between speed and accuracy)"
+        },
+        "ef_construct": {
+          "type": "integer",
+          "const": 100,
+          "description": "Size of dynamic candidate list for constructing graph"
+        },
+        "full_scan_threshold": {
+          "type": "integer",
+          "const": 10000,
+          "description": "Threshold for switching to exact search"
+        }
+      },
+      "required": ["m", "ef_construct"]
+    },
+    "payload_schema": {
+      "type": "object",
+      "description": "Metadata fields stored with each vector",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "The actual chunk text content",
+          "minLength": 100,
+          "maxLength": 2000
+        },
+        "chapter": {
+          "type": "string",
+          "description": "Chapter title or number",
+          "example": "Chapter 3: RAG Systems"
+        },
+        "section": {
+          "type": "string",
+          "description": "Section title",
+          "example": "3.2 Retrieval Strategies"
+        },
+        "page": {
+          "type": "integer",
+          "description": "Page number (optional, may be null)",
+          "minimum": 1,
+          "nullable": true
+        },
+        "passage_id": {
+          "type": "string",
+          "description": "Unique human-readable identifier for the chunk",
+          "pattern": "^ch[0-9]+-sec[0-9]+-p[0-9]+$",
+          "example": "ch3-sec2-p45"
+        },
+        "source_file": {
+          "type": "string",
+          "description": "Original Markdown file path",
+          "example": "content/chapter-3.md"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the chunk was indexed",
+          "example": "2025-12-15T10:30:00Z"
+        }
+      },
+      "required": ["text", "chapter", "section", "passage_id", "source_file", "created_at"]
+    },
+    "indexed_payload_fields": {
+      "type": "array",
+      "description": "Payload fields to create indexes on for filtering",
+      "items": {
+        "type": "string",
+        "enum": ["chapter", "section", "page", "passage_id"]
+      },
+      "uniqueItems": true,
+      "default": ["chapter", "section", "page", "passage_id"]
+    }
+  },
+  "required": ["collection_name", "vector_config", "hnsw_config", "payload_schema"],
+  "examples": [
+    {
+      "collection_name": "book-chunks",
+      "vector_config": {
+        "size": 1536,
+        "distance": "Cosine"
+      },
+      "hnsw_config": {
+        "m": 16,
+        "ef_construct": 100,
+        "full_scan_threshold": 10000
+      },
+      "payload_schema": {
+        "text": "The optimal chunk size for technical documentation is 500-1000 tokens with 100-token overlap. This preserves comprehension context while avoiding information dilution.",
+        "chapter": "Chapter 3: RAG Systems",
+        "section": "3.2 Retrieval Strategies",
+        "page": 45,
+        "passage_id": "ch3-sec2-p45",
+        "source_file": "content/chapter-3.md",
+        "created_at": "2025-12-15T10:30:00Z"
+      },
+      "indexed_payload_fields": ["chapter", "section", "page", "passage_id"]
+    }
+  ],
+  "additionalProperties": false,
+  "notes": {
+    "free_tier_limits": {
+      "max_storage": "1 GB",
+      "max_vectors": "1 million",
+      "estimated_capacity": "With 1536-dim embeddings (~6 KB per vector with payload), Free Tier can store approximately 166,000 chunks. This is well above the expected ~10,000 chunks for a 500-page book."
+    },
+    "indexing_strategy": {
+      "batch_size": 100,
+      "description": "Upload chunks in batches of 100 to optimize indexing speed and avoid rate limits"
+    },
+    "search_parameters": {
+      "default_top_k": 10,
+      "default_ef_search": 128,
+      "description": "For queries, fetch top-10 candidates with ef=128, then rerank to top-5 by section proximity"
+    },
+    "payload_filtering": {
+      "future_feature": "Enable chapter/section-scoped search using Qdrant payload filters",
+      "example_filter": {
+        "chapter": "Chapter 3: RAG Systems"
+      }
+    }
+  }
+}

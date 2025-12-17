@@ -1,0 +1,544 @@
+openapi: 3.0.3
+info:
+  title: RAG Chatbot API
+  description: |
+    FastAPI backend for the AI-Native Software Development Book RAG chatbot.
+    Supports two modes: book-wide retrieval and selected-text-only analysis.
+    All responses are strictly grounded in book content or user-selected text.
+  version: 1.0.0
+  contact:
+    name: RAG Chatbot Team
+servers:
+  - url: https://api.example.com/v1
+    description: Production server
+  - url: http://localhost:8000/v1
+    description: Local development server
+
+paths:
+  /chat:
+    post:
+      summary: Submit a question to the chatbot
+      description: |
+        Main endpoint for chatbot interaction. Supports two modes:
+        - `book-wide`: Retrieves relevant chunks from Qdrant and generates answer
+        - `selected-text`: Uses only provided context (no retrieval)
+      operationId: chat
+      tags:
+        - Chat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+            examples:
+              book-wide:
+                summary: Book-wide retrieval mode
+                value:
+                  query: "What is the optimal chunk size for RAG systems?"
+                  mode: "book-wide"
+              selected-text:
+                summary: Selected-text mode
+                value:
+                  query: "Explain this approach"
+                  mode: "selected-text"
+                  context: "The optimal chunk size for technical documentation is 500-1000 tokens with 100-token overlap."
+      responses:
+        '200':
+          description: Successful response with answer or refusal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+              examples:
+                success:
+                  summary: Successful answer
+                  value:
+                    answer: "The optimal chunk size for technical documentation in RAG systems is 500-1000 tokens with 100-token overlap. This range preserves comprehension context while avoiding information dilution."
+                    sources:
+                      - passage_id: "ch3-sec2-p45"
+                        chapter: "Chapter 3: RAG Systems"
+                        section: "3.2 Retrieval Strategies"
+                        page: 45
+                        snippet: "The optimal chunk size for technical documentation is 500-1000 tokens..."
+                    refused: false
+                    confidence: 0.92
+                    latency_ms: 1450
+                refusal:
+                  summary: Refused due to insufficient context
+                  value:
+                    answer: "This information cannot be verified from the book content."
+                    sources: []
+                    refused: true
+                    refusal_reason: "Top-1 similarity (0.62) below threshold (0.7)"
+                    confidence: 0.0
+                    latency_ms: 850
+        '400':
+          description: Invalid request (validation error)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing-context:
+                  summary: Selected-text mode without context
+                  value:
+                    error: true
+                    message: "Context required for selected-text mode"
+                    code: "VALIDATION_ERROR"
+                invalid-mode:
+                  summary: Invalid mode value
+                  value:
+                    error: true
+                    message: "Mode must be 'book-wide' or 'selected-text'"
+                    code: "VALIDATION_ERROR"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                retrieval-error:
+                  summary: Qdrant unavailable
+                  value:
+                    error: true
+                    message: "Retrieval service temporarily unavailable. Please try again."
+                    code: "RETRIEVAL_UNAVAILABLE"
+                    retry_after: 30
+
+  /health:
+    get:
+      summary: Health check endpoint
+      description: Returns service status and dependency health
+      operationId: healthCheck
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "healthy"
+                dependencies:
+                  qdrant: "healthy"
+                  neon_postgres: "healthy"
+                  openai: "healthy"
+                timestamp: "2025-12-15T14:30:00Z"
+        '503':
+          description: Service unhealthy (dependency failure)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "unhealthy"
+                dependencies:
+                  qdrant: "unhealthy"
+                  neon_postgres: "healthy"
+                  openai: "healthy"
+                timestamp: "2025-12-15T14:30:00Z"
+
+  /admin/index:
+    post:
+      summary: Index book content into Qdrant
+      description: |
+        Admin endpoint to extract, chunk, embed, and index book content.
+        This is a one-time operation (or on book updates).
+      operationId: indexContent
+      tags:
+        - Admin
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IndexRequest'
+            example:
+              source_path: "content/"
+              chunk_size: 800
+              chunk_overlap: 100
+              force_reindex: false
+      responses:
+        '200':
+          description: Indexing completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexResponse'
+              example:
+                status: "completed"
+                chunks_indexed: 9543
+                total_tokens: 187432
+                indexing_time_sec: 145.7
+                collection_name: "book-chunks"
+        '400':
+          description: Invalid indexing request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (missing or invalid API key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Indexing failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/stats:
+    get:
+      summary: Get system statistics
+      description: Returns metrics on queries, responses, refusals, and performance
+      operationId: getStats
+      tags:
+        - Admin
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+          example: "2025-12-01"
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+          example: "2025-12-15"
+      responses:
+        '200':
+          description: Statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatsResponse'
+              example:
+                total_queries: 1543
+                total_responses: 1543
+                refusal_count: 87
+                refusal_rate: 0.056
+                avg_latency_ms: 1320
+                p95_latency_ms: 2450
+                avg_confidence: 0.87
+                top_chapters_queried:
+                  - chapter: "Chapter 3: RAG Systems"
+                    query_count: 423
+                  - chapter: "Chapter 5: Prompt Engineering"
+                    query_count: 312
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    ChatRequest:
+      type: object
+      required:
+        - query
+        - mode
+      properties:
+        query:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: User's question or prompt
+          example: "What is the optimal chunk size for RAG systems?"
+        mode:
+          type: string
+          enum:
+            - book-wide
+            - selected-text
+          description: Retrieval mode (book-wide or selected-text)
+          example: "book-wide"
+        context:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 5000
+          description: User-selected text (required if mode=selected-text)
+          example: "The optimal chunk size for technical documentation is 500-1000 tokens with 100-token overlap."
+
+    ChatResponse:
+      type: object
+      required:
+        - answer
+        - sources
+        - refused
+        - latency_ms
+      properties:
+        answer:
+          type: string
+          description: Generated answer or refusal message
+          example: "The optimal chunk size for technical documentation in RAG systems is 500-1000 tokens with 100-token overlap."
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/Source'
+          description: Array of source citations (empty if refused)
+        refused:
+          type: boolean
+          description: True if chatbot refused to answer
+          example: false
+        refusal_reason:
+          type: string
+          nullable: true
+          description: Explanation for refusal (if refused=true)
+          example: "Top-1 similarity (0.62) below threshold (0.7)"
+        confidence:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          nullable: true
+          description: Generation confidence score
+          example: 0.92
+        latency_ms:
+          type: integer
+          description: End-to-end latency in milliseconds
+          example: 1450
+
+    Source:
+      type: object
+      required:
+        - passage_id
+        - chapter
+        - section
+        - snippet
+      properties:
+        passage_id:
+          type: string
+          description: Unique identifier for the source chunk
+          example: "ch3-sec2-p45"
+        chapter:
+          type: string
+          description: Chapter title
+          example: "Chapter 3: RAG Systems"
+        section:
+          type: string
+          description: Section title
+          example: "3.2 Retrieval Strategies"
+        page:
+          type: integer
+          nullable: true
+          description: Page number (if available)
+          example: 45
+        snippet:
+          type: string
+          maxLength: 200
+          description: Brief excerpt from the source chunk
+          example: "The optimal chunk size for technical documentation is 500-1000 tokens..."
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+        - code
+      properties:
+        error:
+          type: boolean
+          description: Always true for error responses
+          example: true
+        message:
+          type: string
+          description: Human-readable error message
+          example: "Retrieval service temporarily unavailable. Please try again."
+        code:
+          type: string
+          description: Machine-readable error code
+          example: "RETRIEVAL_UNAVAILABLE"
+        retry_after:
+          type: integer
+          nullable: true
+          description: Suggested retry delay in seconds
+          example: 30
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - dependencies
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum:
+            - healthy
+            - unhealthy
+          description: Overall service status
+          example: "healthy"
+        dependencies:
+          type: object
+          properties:
+            qdrant:
+              type: string
+              enum:
+                - healthy
+                - unhealthy
+              example: "healthy"
+            neon_postgres:
+              type: string
+              enum:
+                - healthy
+                - unhealthy
+              example: "healthy"
+            openai:
+              type: string
+              enum:
+                - healthy
+                - unhealthy
+              example: "healthy"
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp of health check
+          example: "2025-12-15T14:30:00Z"
+
+    IndexRequest:
+      type: object
+      required:
+        - source_path
+      properties:
+        source_path:
+          type: string
+          description: Path to book content (Markdown files)
+          example: "content/"
+        chunk_size:
+          type: integer
+          minimum: 100
+          maximum: 2000
+          default: 800
+          description: Target chunk size in tokens
+          example: 800
+        chunk_overlap:
+          type: integer
+          minimum: 0
+          maximum: 500
+          default: 100
+          description: Overlap between chunks in tokens
+          example: 100
+        force_reindex:
+          type: boolean
+          default: false
+          description: Force re-indexing even if collection exists
+          example: false
+
+    IndexResponse:
+      type: object
+      required:
+        - status
+        - chunks_indexed
+        - total_tokens
+        - indexing_time_sec
+        - collection_name
+      properties:
+        status:
+          type: string
+          enum:
+            - completed
+            - failed
+          description: Indexing status
+          example: "completed"
+        chunks_indexed:
+          type: integer
+          description: Number of chunks indexed
+          example: 9543
+        total_tokens:
+          type: integer
+          description: Total tokens indexed
+          example: 187432
+        indexing_time_sec:
+          type: number
+          format: float
+          description: Time taken for indexing
+          example: 145.7
+        collection_name:
+          type: string
+          description: Qdrant collection name
+          example: "book-chunks"
+
+    StatsResponse:
+      type: object
+      required:
+        - total_queries
+        - total_responses
+        - refusal_count
+        - refusal_rate
+        - avg_latency_ms
+        - p95_latency_ms
+        - avg_confidence
+      properties:
+        total_queries:
+          type: integer
+          description: Total number of queries
+          example: 1543
+        total_responses:
+          type: integer
+          description: Total number of responses
+          example: 1543
+        refusal_count:
+          type: integer
+          description: Number of refused responses
+          example: 87
+        refusal_rate:
+          type: number
+          format: float
+          description: Refusal rate (refusal_count / total_responses)
+          example: 0.056
+        avg_latency_ms:
+          type: number
+          format: float
+          description: Average latency in milliseconds
+          example: 1320.5
+        p95_latency_ms:
+          type: number
+          format: float
+          description: 95th percentile latency in milliseconds
+          example: 2450.0
+        avg_confidence:
+          type: number
+          format: float
+          description: Average confidence score
+          example: 0.87
+        top_chapters_queried:
+          type: array
+          items:
+            type: object
+            properties:
+              chapter:
+                type: string
+                example: "Chapter 3: RAG Systems"
+              query_count:
+                type: integer
+                example: 423
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for admin endpoints
+
+tags:
+  - name: Chat
+    description: Main chatbot interaction endpoints
+  - name: Health
+    description: Service health and status
+  - name: Admin
+    description: Administrative endpoints (indexing, statistics)
