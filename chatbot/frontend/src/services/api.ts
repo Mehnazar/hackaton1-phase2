@@ -138,7 +138,7 @@ class APIService {
       // Remove frontmatter and main title
       const contentWithoutFrontmatter = content
         .split("\n")
-        .filter((line, idx, arr) => {
+        .filter((_line, idx, arr) => {
           const dashCount = arr.filter((l) => l.trim() === "---").length;
           if (dashCount >= 2) {
             const firstDash = arr.indexOf("---");

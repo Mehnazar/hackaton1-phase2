@@ -3,7 +3,7 @@
  * Landing page with introductory content, then full-screen BookReader with floating chatbot icon and popup
  */
 
-import React, { useState } from "react";
+import { useState } from "react";
 import { Header } from "./components/Header";
 import { LandingPage } from "./components/LandingPage";
 import { BookReader } from "./components/BookReader";
