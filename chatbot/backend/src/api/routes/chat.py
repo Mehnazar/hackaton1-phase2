@@ -6,8 +6,10 @@ from typing import List, Optional
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, status
+from openai import OpenAI
 from pydantic import BaseModel, Field
 
+from ...config import settings
 from ...models import QueryMode, Source
 from ...services import AnswerGenerationService, RetrievalService
 from ...utils.validation import sanitize_text, validate_context_text, validate_query_text
